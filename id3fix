@@ -1,0 +1,137 @@
+#!/usr/bin/perl -w
+# 
+# id3fix - recursively fix id3 tags to match filename structure
+# Copyright (C) 2002-2004 Russ Burdick, grub@extrapolation.net
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+#
+
+# simple program, but also a great template for writing a recursive 
+# file/directory processor
+
+use strict;
+use warnings;
+use Cwd;
+
+# args in @ARGV, num args (without command) in $#ARGV
+
+sub process_dir($);
+sub process_file($);
+
+my $f;
+my $path;
+foreach $f (@ARGV) {
+
+   if (-f $f) {
+      process_file $f;
+   } elsif (-d $f) {
+      $path = cwd();
+      $path = $path . "/" . $f;
+      process_dir $path;
+   }
+
+}
+
+sub process_dir($) {
+
+   my $sdir = cwd();
+   my $g = shift;
+   my $path;
+   chdir $g;
+   opendir THEDIR, "." or die "cant open dir: $!\n";
+   my @dir = readdir THEDIR;
+   closedir THEDIR;
+
+   foreach $f (@dir) {
+
+      if (-f $f) {
+         process_file $f;
+      } elsif (-d $f) {
+         $path = cwd();
+         $path = $path . "/" . $f;
+         if ($f !~ m/^\./) {
+            print "directory: " . $path . "\n";
+            process_dir $path;
+         }
+      }
+   }
+   chdir $sdir;
+   return;
+}
+
+sub process_file($) {
+
+   my $f = shift;
+   my $artist;
+   my $album;
+   my $track;
+   my $song;
+   my $cmd;
+
+   if ($f =~ m/\.mp3$/i) {
+      print "file: " . $f . "\n";
+
+      if ($f =~ m/^([0-9a-z.]+?)-([0-9a-z.]+?)-(\d\d)-([0-9a-z.-]+)\.mp3/i) {
+         print "artist-album-##-songname.mp3 format\n";
+         $artist = $1;
+         $album = $2;
+         $track = $3;
+         $song = $4;
+      } elsif ($f =~ m/^([0-9a-z.]+?)-(\d\d)-([0-9a-z.]+?)-([0-9a-z.-]+)\.mp3/i) {
+         print "album-##-artist-songname.mp3 format\n";
+         $artist = $3;
+         $album = $1;
+         $track = $2;
+         $song = $4;
+      } elsif ($f =~ m/^([0-9a-z.]+?)-([0-9a-z-.]+)\.mp3/i) {
+         print "artist-songname.mp3 format\n";
+         $artist = $1;
+         $song = $2;
+      } else {
+         print "$f didnt match\n";
+         return;
+      }
+   } else {
+      print "$f not mp3\n\n";
+      return;
+   }
+
+   $cmd = "id3ren -quiet -tag -tagonly";
+
+   if ($song) {
+      $song =~ s/\./ /g;
+      $cmd .= " -song=\"$song\"";
+   }
+   if ($artist) {
+      $artist =~ s/\./ /g;
+      $cmd .= " -artist=\"$artist\"";
+   }
+   if ($album) {
+      $album =~ s/\./ /g;
+      $cmd .= " -album=\"$album\"";
+   } else {
+      $cmd .= " -noalbum";
+   }
+   if ($track) {
+      $cmd .= " -track=\"$track\"";
+   } else {
+      $cmd .= " -notrack";
+   }
+   $cmd .= " -nocomment -noyear -nogenre $f";
+   print "$cmd\n\n";
+
+#   system($cmd);
+   return;
+}
